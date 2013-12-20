@@ -8,7 +8,6 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[leiningen-core "2.3.3"]
                  [org.clojure/data.xml "0.0.3"]
-                 [org.clojure/tools.namespace "0.2.4"]
                  [commons-io "2.4"]
                  [bultitude "0.2.2"]
                  [stencil "0.3.2"]
