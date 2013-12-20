@@ -67,6 +67,7 @@
     (slurp resource)))
 
 (declare help-for)
+(declare docstrings-memoized)
 
 (defn- alias-help
   "Returns a string containing help for an alias, or nil if the string is not an
@@ -85,13 +86,10 @@
             :no-explanation-or-string (str task-name " is an alias, expands to "
                                            alias-expansion)))))
 
-(defn- doc-from-ns-form
-  [decl]
-  (if (> (count decl) 2)
-    (if (string? (nth decl 2)) (nth decl 2) nil)
-    ":)"
-    )
-  )
+(defn doc-from-ns-form
+   "Extract the docstring from a given ns form without evaluating the form. The docstring returned should be the return value of (:doc (meta namespace-symbol)) if the ns-form were to be evaluated."
+   [ns-form]
+   (:doc (meta (second (second (second (macroexpand ns-form)))))))
 
 (defn help-for
   "Returns a string containing help for a task.
@@ -144,15 +142,20 @@
        (.endsWith (.getName f) ".clj")))
 (defn help-summary-for [task-ns]
   (try (let [task-name (last (.split (name task-ns) "\\."))
-             ns-summary (:doc (meta (find-ns (doto task-ns require))))
+             ns-summary (task-ns (docstrings-memoized))
              first-line (first (.split (help-for {} task-name) "\n"))]
          ;; Use first line of task docstring if ns metadata isn't present
          (str task-name (apply str (repeat (- task-name-column-width
                                               (count task-name)) " "))
               (or ns-summary first-line)))
-       (catch Throwable e
-         (binding [*out* *err*]
-           (str task-ns "  Problem loading: " (.getMessage e))))))
+
+       ;;(catch Throwable e
+       ;;  (binding [*out* *err*]
+       ;;    (str task-ns "  Problem loading: " (.getMessage e))))
+
+)
+
+)
 (defn- namespaces-in-jar [^File jar]
   (try
     (let [jarfile (JarFile. jar)]
@@ -212,17 +215,16 @@
                (if prefix
                  (filter #(and (second %) (.startsWith (name (second %)) prefix)) ns-list)
                  ns-list))))
-
 (defn forms []
   (mapcat
    (partial file->namespaces "leiningen")
    (classpath->files (classpath->collection (b/classpath-files)))))
-
-(defn help-summary-for-form [form]
-  (str (second form)
-       (doc-from-ns-form form)
-  )
-)
+(defn docstrings[]
+  (apply hash-map
+         (flatten
+          (map #( [ (second %) (doc-from-ns-form %) ] ) (forms)))))
+(defn docstrings-memoized []
+  ((memoize docstrings)))
 
 (defn ^:no-project-needed ^:higher-order help
   "Display a list of tasks or help for a given task or subtask.
@@ -235,14 +237,8 @@ deploying, mixed-source, templates, and copying info."
   ([project]
      (println "Leiningen is a tool for working with Clojure projects.\n")
      (println "Several tasks are available:")
-     ;;(doall (pmap require (main/tasks)))
-     ;;(println (forms))
-     (doseq [form (forms)]
-       (println (help-summary-for-form form)))
-
-     ;;(println (b/classpath-files))
-     ;;(doseq [task-ns (main/tasks)]
-     ;;  (println (help-summary-for task-ns)))
+     (doseq [task-ns (main/tasks)]
+       (println (help-summary-for task-ns)))
      (println "\nRun `lein help $TASK` for details.")
      (println "\nGlobal Options:")
      (println "  -o             Run a task offline.")
