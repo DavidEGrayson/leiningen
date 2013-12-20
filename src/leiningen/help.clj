@@ -85,9 +85,12 @@
             :no-explanation-or-string (str task-name " is an alias, expands to "
                                            alias-expansion)))))
 
-(defn- doc-from-ns-decl
+(defn- doc-from-ns-form
   [decl]
-  (if (string? (second decl)) (second decl) nil)
+  (if (> (count decl) 2)
+    (if (string? (nth decl 2)) (nth decl 2) nil)
+    ":)"
+    )
   )
 
 (defn help-for
@@ -96,9 +99,6 @@
   on the task, then a docstring on the task ns."
   ([task-name]
      (let [[task-ns task] (resolve-task task-name)]
-       (println "hello from help-for.  task-ns=" task-ns)
-       (println (b/file->namespaces "leiningen" (b/path-for task-ns)))
-
        (if task
          (let [help-fn (ns-resolve task-ns 'help)]
            (str (or (and (not= task-ns 'leiningen.help) help-fn (help-fn))
@@ -210,8 +210,19 @@
                         f))
     (jar? f) (let [ns-list (namespaces-in-jar f)]
                (if prefix
-                 (filter #(and % (.startsWith (name %) prefix)) ns-list)
+                 (filter #(and (second %) (.startsWith (name (second %)) prefix)) ns-list)
                  ns-list))))
+
+(defn forms []
+  (mapcat
+   (partial file->namespaces "leiningen")
+   (classpath->files (classpath->collection (b/classpath-files)))))
+
+(defn help-summary-for-form [form]
+  (str (second form)
+       (doc-from-ns-form form)
+  )
+)
 
 (defn ^:no-project-needed ^:higher-order help
   "Display a list of tasks or help for a given task or subtask.
@@ -225,14 +236,13 @@ deploying, mixed-source, templates, and copying info."
      (println "Leiningen is a tool for working with Clojure projects.\n")
      (println "Several tasks are available:")
      ;;(doall (pmap require (main/tasks)))
-     (println (mapcat
-               (partial file->namespaces "leiningen")
-               (classpath->files (classpath->collection (b/classpath-files)))))
+     ;;(println (forms))
+     (doseq [form (forms)]
+       (println (help-summary-for-form form)))
 
      ;;(println (b/classpath-files))
-     (println (.getClass (first (main/tasks))))
-     (doseq [task-ns (main/tasks)]
-       (println (help-summary-for task-ns)))
+     ;;(doseq [task-ns (main/tasks)]
+     ;;  (println (help-summary-for task-ns)))
      (println "\nRun `lein help $TASK` for details.")
      (println "\nGlobal Options:")
      (println "  -o             Run a task offline.")
