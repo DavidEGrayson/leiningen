@@ -5,19 +5,14 @@
                   :repositories (merge cemerick.pomegranate.aether/maven-central
                                        {"clojars" "http://clojars.org/repo"}))
 
-(println "hello inside downloads.clj")
-
 (ns leiningen.downloads
   "Calculate download statistics from logs."
-  (:require ;;[aws.sdk.s3 :as s3]
+  (:require [aws.sdk.s3 :as s3]
             [clojure.java.io :as io]
             [tentacles.repos :as repo]
             [clojure.pprint :refer [pprint]]
             [leiningen.core.main :as main])
   (:import (java.io File)))
-
-(println (meta (find-ns (symbol "leiningen.downloads"))))
-(println "hello after ns downloads.clj")
 
 (defn ^:internal aws-cred []
 
@@ -113,5 +108,3 @@
     (pprint (frequencies (map :file s3-downloads)))
     (println ""))) ;; need this last println for some reason or else
                    ;; the above doesn't print out using lein run...
-
-(println "hello bottom of downloads.clj")

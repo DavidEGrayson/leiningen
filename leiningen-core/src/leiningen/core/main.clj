@@ -146,8 +146,6 @@
 (defn tasks
   "Return a list of symbols naming all visible tasks."
   []
-  (println "hello from tasks")
-  (println (.getClass (first (b/namespaces-on-classpath :prefix "leiningen"))))
   (->> (b/namespaces-on-classpath :prefix "leiningen")
        (filter #(re-find #"^leiningen\.(?!core|main|util)[^\.]+$" (name %)))
        (distinct)

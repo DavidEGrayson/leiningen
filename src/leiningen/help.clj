@@ -219,10 +219,10 @@
   (mapcat
    (partial file->namespaces "leiningen")
    (classpath->files (classpath->collection (b/classpath-files)))))
-(defn docstrings[]
+(defn docstrings []
   (apply hash-map
          (flatten
-          (map #( [ (second %) (doc-from-ns-form %) ] ) (forms)))))
+          (map #(identity [ (second %) (doc-from-ns-form %) ] ) (forms)))))
 (defn docstrings-memoized []
   ((memoize docstrings)))
 
