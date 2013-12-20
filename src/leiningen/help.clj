@@ -142,16 +142,14 @@
        (.endsWith (.getName f) ".clj")))
 (defn help-summary-for [task-ns]
   (try (let [task-name (last (.split (name task-ns) "\\."))
-             ns-summary (task-ns (docstrings-memoized))
-             first-line (first (.split (help-for {} task-name) "\n"))]
+             ns-summary (task-ns (docstrings-memoized))]
          ;; Use first line of task docstring if ns metadata isn't present
          (str task-name (apply str (repeat (- task-name-column-width
                                               (count task-name)) " "))
-              (or ns-summary first-line)))
-
-       ;;(catch Throwable e
-       ;;  (binding [*out* *err*]
-       ;;    (str task-ns "  Problem loading: " (.getMessage e))))
+              (or ns-summary (first (.split (help-for {} task-name) "\n")))))
+       (catch Throwable e
+         (binding [*out* *err*]
+           (str task-ns "  Problem loading: " (.getMessage e))))
 
 )
 
@@ -223,8 +221,7 @@
   (apply hash-map
          (flatten
           (map #(identity [ (second %) (doc-from-ns-form %) ] ) (forms)))))
-(defn docstrings-memoized []
-  ((memoize docstrings)))
+(def docstrings-memoized (memoize docstrings))
 
 (defn ^:no-project-needed ^:higher-order help
   "Display a list of tasks or help for a given task or subtask.
