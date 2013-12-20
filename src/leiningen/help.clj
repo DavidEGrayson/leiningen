@@ -2,7 +2,11 @@
   "Display a list of tasks or help for a given task."
   (:require [clojure.string :as string]
             [clojure.java.io :as io]
-            [leiningen.core.main :as main]))
+            [leiningen.core.main :as main]
+            [bultitude.core :as b])
+  (:import  (java.util.jar JarFile JarEntry)
+            (java.util.zip ZipException)
+            [java.io PushbackReader File InputStreamReader BufferedReader]))
 
 (def ^{:private true
        :doc "Width of task name column in list of tasks produced by help task."}
@@ -81,12 +85,20 @@
             :no-explanation-or-string (str task-name " is an alias, expands to "
                                            alias-expansion)))))
 
+(defn- doc-from-ns-decl
+  [decl]
+  (if (string? (second decl)) (second decl) nil)
+  )
+
 (defn help-for
   "Returns a string containing help for a task.
   Looks for a function named 'help' in the subtask's namespace, then a docstring
   on the task, then a docstring on the task ns."
   ([task-name]
      (let [[task-ns task] (resolve-task task-name)]
+       (println "hello from help-for.  task-ns=" task-ns)
+       (println (b/file->namespaces "leiningen" (b/path-for task-ns)))
+
        (if task
          (let [help-fn (ns-resolve task-ns 'help)]
            (str (or (and (not= task-ns 'leiningen.help) help-fn (help-fn))
@@ -119,6 +131,17 @@
      (let [aliases (merge main/aliases (:aliases project))]
        (help-for-subtask (aliases task-name task-name) subtask-name))))
 
+(declare read-ns-form)
+(defn- ns-in-jar-entry [^JarFile jarfile ^JarEntry entry]
+  (with-open [rdr (-> jarfile
+                      (.getInputStream entry)
+                      InputStreamReader.
+                      BufferedReader.
+                      PushbackReader.)]
+    (read-ns-form rdr)))
+(defn- clj-jar-entry? [^JarEntry f]
+  (and (not (.isDirectory f))
+       (.endsWith (.getName f) ".clj")))
 (defn help-summary-for [task-ns]
   (try (let [task-name (last (.split (name task-ns) "\\."))
              ns-summary (:doc (meta (find-ns (doto task-ns require))))
@@ -130,6 +153,65 @@
        (catch Throwable e
          (binding [*out* *err*]
            (str task-ns "  Problem loading: " (.getMessage e))))))
+(defn- namespaces-in-jar [^File jar]
+  (try
+    (let [jarfile (JarFile. jar)]
+      (for [entry (enumeration-seq (.entries jarfile))
+            :when (clj-jar-entry? entry)
+            :let [ns-form (ns-in-jar-entry jarfile entry)]
+            :when ns-form]
+        ns-form))
+    (catch ZipException e
+      (throw (Exception. (str "jar file corrupt: " jar) e)))))
+(defn jar? [^File f]
+  (and (.isFile f) (.endsWith (.getName f) ".jar")))
+(defn read-ns-form
+  [rdr]
+  (let [form (try (read rdr false ::done)
+                  (catch Exception e ::done))]
+    (if (try
+          (and (list? form) (= 'ns (first form)))
+          (catch Exception _))
+      (try
+        (str form) ;; force the read to read the whole form, throwing on error
+        form
+        (catch Exception _))
+      (when-not (= ::done form)
+        (recur rdr)))))
+(defn ns-form-for-file [file]
+  (with-open [r (PushbackReader. (io/reader file))] (read-ns-form r)))
+(defn classpath->files [classpath]
+  (map io/file classpath))
+(defn split-classpath [^String classpath]
+  (.split classpath (System/getProperty "path.separator")))
+(defn classpath->collection [classpath]
+  (if (coll? classpath)
+    classpath
+    (split-classpath classpath)))
+(defn clj? [^File f]
+  (and (not (.isDirectory f))
+       (.endsWith (.getName f) ".clj")))
+(defn namespaces-in-dir
+  "Return a seq of all namespaces found in Clojure source files in dir."
+  [dir]
+  (for [^File f (file-seq (io/file dir))
+        :when (and (clj? f) (.canRead f))
+        :let [ns-form (ns-form-for-file f)]
+        :when ns-form]
+    ns-form))
+(defn file->namespaces
+  [^String prefix ^File f]
+  (cond
+    (.isDirectory f) (namespaces-in-dir
+                      (if prefix
+                        (io/file f (-> prefix
+                                       (.replaceAll "\\." "/")
+                                       (.replaceAll "-" "_")))
+                        f))
+    (jar? f) (let [ns-list (namespaces-in-jar f)]
+               (if prefix
+                 (filter #(and % (.startsWith (name %) prefix)) ns-list)
+                 ns-list))))
 
 (defn ^:no-project-needed ^:higher-order help
   "Display a list of tasks or help for a given task or subtask.
@@ -142,6 +224,13 @@ deploying, mixed-source, templates, and copying info."
   ([project]
      (println "Leiningen is a tool for working with Clojure projects.\n")
      (println "Several tasks are available:")
+     ;;(doall (pmap require (main/tasks)))
+     (println (mapcat
+               (partial file->namespaces "leiningen")
+               (classpath->files (classpath->collection (b/classpath-files)))))
+
+     ;;(println (b/classpath-files))
+     (println (.getClass (first (main/tasks))))
      (doseq [task-ns (main/tasks)]
        (println (help-summary-for task-ns)))
      (println "\nRun `lein help $TASK` for details.")
